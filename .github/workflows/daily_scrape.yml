@@ -27,7 +27,7 @@ jobs:
       - name: Run scraper
         run: python scrape_provenance_pulse.py
 
-        - name: Commit updated files
+      - name: Commit updated files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
