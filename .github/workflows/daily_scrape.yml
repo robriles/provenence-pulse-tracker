@@ -27,10 +27,13 @@ jobs:
       - name: Run scraper
         run: python scrape_provenance_pulse.py
 
-      - name: Commit updated files
+        - name: Commit updated files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git add provenance_pulse_tracker.xlsx debug_output.txt
           git diff --staged --quiet || git commit -m "Debug output: $(date +'%Y-%m-%d')"
           git push
