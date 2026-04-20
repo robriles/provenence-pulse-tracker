@@ -1,21 +1,14 @@
 """
-Provenance Pulse Daily Scraper
-================================
-Scrapes all 12 Provenance Blockchain Metrics from https://provenance.io/pulse
-on the 3m time period, and appends them with today's date to an Excel spreadsheet.
-
-SETUP (run once):
-    pip install playwright openpyxl
-    playwright install chromium
-
-SCHEDULE (run daily):
-  Mac/Linux — crontab -e, add:
-    0 13 * * * /usr/bin/python3 /path/to/scrape_provenance_pulse.py
-  Windows — Task Scheduler, Daily at 8:00 AM ET
+Provenance Pulse Daily Scraper - API Intercept Version
+=======================================================
+Intercepts the network API calls made by provenance.io/pulse
+to find and directly call the underlying data endpoints.
 """
 
 import re
 import sys
+import json
+import requests
 from datetime import date
 from pathlib import Path
 
@@ -31,171 +24,114 @@ PAGE_TIMEOUT = 60_000
 # ──────────────────────────────────────────────────────────────────────────────
 
 EXCEL_HEADERS = [
-    "Date",
-    "TVL",
-    "Trading TVL",
-    "3M Chain Transactions",
-    "3M Chain Fees",
-    "Total Participants",
-    "Total Committed Value",
-    "Total Loan Balance",
-    "Total Loans",
-    "3M Loan Amount Funded",
-    "3M Loans Funded",
-    "3M Loan Amount Paid",
-    "3M Loans Paid",
-]
-
-# From the debug output we know the exact label text on the page.
-# After clicking 3m, labels change from "Week's X" to "3 Months X".
-# We match by the stable part that doesn't change between time periods.
-METRIC_LABEL_PATTERNS = [
-    ("TVL",                "TVL"),
-    ("Trading TVL",        "Trading TVL"),
-    ("3M Chain Transactions", "Chain Transactions"),
-    ("3M Chain Fees",      "Chain Fees"),
-    ("Total Participants", "Total Participants"),
-    ("Total Committed Value", "Committed Value"),
-    ("Total Loan Balance", "Loan Balance"),
-    ("Total Loans",        "Total Loans"),
-    ("3M Loan Amount Funded", "Loan Amount Funded"),
-    ("3M Loans Funded",    "Loans Funded"),
-    ("3M Loan Amount Paid","Loan Amount Paid"),
-    ("3M Loans Paid",      "Loans Paid"),
+    "Date", "TVL", "Trading TVL", "3M Chain Transactions", "3M Chain Fees",
+    "Total Participants", "Total Committed Value", "Total Loan Balance",
+    "Total Loans", "3M Loan Amount Funded", "3M Loans Funded",
+    "3M Loan Amount Paid", "3M Loans Paid",
 ]
 
 
-def get_span_nodes(page):
-    return page.evaluate("""
-        () => {
-            const spans = document.querySelectorAll('span');
-            const results = [];
-            for (const span of spans) {
-                const text = span.textContent.trim();
-                if (text.length === 0) continue;
-                const rect = span.getBoundingClientRect();
-                if (rect.width === 0) continue;
-                results.push({ text: text, y: Math.round(rect.top), x: Math.round(rect.left) });
-            }
-            return results;
-        }
-    """)
+def intercept_and_scrape():
+    """Launch browser, intercept API calls, and extract data directly from responses."""
+    api_calls = []
+    api_responses = {}
 
-
-def click_3m_and_verify(page):
-    """Click the 3m button for Blockchain Metrics and verify the labels changed."""
-    # There are two 3m button groups — Hash Metrics and Blockchain Metrics.
-    # From debug: both sets are at y~582 and y~1352. We want the second (higher y).
-    for attempt in range(3):
-        try:
-            buttons = page.locator("button").filter(has_text=re.compile(r"^3m$")).all()
-            print(f"  Found {len(buttons)} '3m' buttons (attempt {attempt+1})")
-            if len(buttons) >= 2:
-                # Click the second 3m button (Blockchain Metrics section)
-                buttons[1].click()
-            elif len(buttons) == 1:
-                buttons[0].click()
-            else:
-                print("  No 3m buttons found!")
-                return False
-
-            # Wait for labels to update — look for "3 Months" text appearing
-            page.wait_for_timeout(5000)
-
-            # Verify by checking if any span now contains "3 Months"
-            nodes = get_span_nodes(page)
-            has_3m = any("3 Months" in n['text'] or "months" in n['text'].lower() for n in nodes)
-            if has_3m:
-                print("  ✅ 3m view confirmed active")
-                return True
-            else:
-                print(f"  ⚠️  3m labels not detected yet, retrying...")
-                page.wait_for_timeout(3000)
-
-        except Exception as e:
-            print(f"  Button click error: {e}")
-            page.wait_for_timeout(2000)
-
-    print("  Proceeding despite unconfirmed 3m state")
-    return False
-
-
-def extract_metrics_from_nodes(nodes):
-    """Match label patterns to values using position-aware span extraction."""
-    results = {h: "N/A" for h in EXCEL_HEADERS[1:]}
-
-    # Only look at spans in the Blockchain Metrics section (y > 1200 from debug)
-    # This avoids accidentally matching Hash Metrics labels like "Total Supply"
-    blockchain_nodes = [n for n in nodes if n['y'] > 1200]
-    print(f"  Blockchain section spans: {len(blockchain_nodes)}")
-
-    for header, pattern in METRIC_LABEL_PATTERNS:
-        found = False
-        for j, node in enumerate(blockchain_nodes):
-            node_text = node['text']
-            if pattern.lower() in node_text.lower() and len(node_text) < 80:
-                # Value span is typically the next numeric span at a lower y position
-                label_y = node['y']
-                label_x = node['x']
-
-                # Look for the value: a span below this label (higher y),
-                # similar x position, containing a number
-                for k in range(j + 1, min(j + 8, len(blockchain_nodes))):
-                    candidate = blockchain_nodes[k]
-                    c_text = candidate['text'].strip()
-
-                    # Skip 'i' (info icon), pure percentages, and change indicators
-                    if c_text == 'i':
-                        continue
-                    if re.match(r'^\(.*%\)$', c_text):
-                        continue
-                    if re.match(r'^[\+\-]?\d+(\.\d+)?%$', c_text):
-                        continue
-
-                    # Must contain digits
-                    if not re.search(r'\d', c_text):
-                        continue
-
-                    # Must look like a real value (dollar, number with commas, etc.)
-                    if re.search(r'[\$\d,\.]+[BMKTbmkt]?', c_text):
-                        results[header] = c_text
-                        print(f"  {header}: {c_text}")
-                        found = True
-                        break
-
-                if found:
-                    break
-
-        if not found:
-            print(f"  {header}: NOT FOUND")
-
-    return results
-
-
-def scrape_metrics() -> dict:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
         )
-        page = context.new_page()
 
-        print("Loading page...")
+        # Intercept all API responses
+        def handle_response(response):
+            url = response.url
+            # Capture any JSON API calls that look relevant
+            if any(kw in url.lower() for kw in ['pulse', 'metric', 'tvl', 'loan', 'chain', 'stats']):
+                try:
+                    body = response.body()
+                    text = body.decode('utf-8', errors='ignore')
+                    if text.strip().startswith('{') or text.strip().startswith('['):
+                        api_calls.append(url)
+                        api_responses[url] = text
+                        print(f"  Captured API: {url}")
+                except Exception:
+                    pass
+
+        # Also capture ALL json responses to find the right one
+        def handle_any_response(response):
+            url = response.url
+            content_type = response.headers.get('content-type', '')
+            if 'json' in content_type and 'provenance' in url:
+                try:
+                    body = response.body()
+                    text = body.decode('utf-8', errors='ignore')
+                    if len(text) > 50:
+                        api_calls.append(url)
+                        api_responses[url] = text[:2000]
+                        print(f"  Captured JSON: {url[:120]}")
+                except Exception:
+                    pass
+
+        page = context.new_page()
+        page.on("response", handle_any_response)
+
+        print("Loading page and intercepting API calls...")
         try:
             page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="networkidle")
         except PlaywrightTimeout:
             page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(10000)
+            page.wait_for_timeout(15000)
 
-        print("Clicking 3m button...")
-        click_3m_and_verify(page)
+        # Wait extra to catch lazy-loaded data
+        page.wait_for_timeout(8000)
 
-        print("Extracting metrics...")
-        nodes = get_span_nodes(page)
-        print(f"Total spans on page: {len(nodes)}")
-
-        results = extract_metrics_from_nodes(nodes)
         browser.close()
+
+    # Save all captured API calls to debug file
+    debug_path = Path(__file__).parent / "debug_output.txt"
+    with open(debug_path, "w") as f:
+        f.write(f"Total API calls captured: {len(api_calls)}\n\n")
+        for url in api_calls:
+            f.write(f"=== URL: {url} ===\n")
+            f.write(api_responses.get(url, 'no body')[:3000])
+            f.write("\n\n")
+
+    print(f"Captured {len(api_calls)} API calls, saved to debug_output.txt")
+    return api_responses
+
+
+def parse_metrics_from_responses(api_responses):
+    """Try to extract the 12 metrics from captured API responses."""
+    results = {h: "N/A" for h in EXCEL_HEADERS[1:]}
+
+    # Look through all responses for our metrics
+    for url, body in api_responses.items():
+        try:
+            data = json.loads(body)
+            text = json.dumps(data).lower()
+
+            # Check if this response contains relevant data
+            if any(kw in text for kw in ['tvl', 'loanamount', 'loan_amount', 'chainTransactions']):
+                print(f"  Promising response from: {url}")
+                print(f"  Keys: {list(data.keys()) if isinstance(data, dict) else 'list'}")
+
+                # Try to extract known fields
+                flat = {}
+                def flatten(obj, prefix=''):
+                    if isinstance(obj, dict):
+                        for k, v in obj.items():
+                            flatten(v, f"{prefix}{k}.")
+                    elif isinstance(obj, list):
+                        for i, v in enumerate(obj):
+                            flatten(v, f"{prefix}{i}.")
+                    else:
+                        flat[prefix.rstrip('.')] = obj
+                flatten(data)
+
+                print(f"  Flattened keys sample: {list(flat.keys())[:20]}")
+        except Exception as e:
+            pass
 
     return results
 
@@ -203,65 +139,53 @@ def scrape_metrics() -> dict:
 def get_or_create_workbook():
     if EXCEL_PATH.exists():
         return load_workbook(EXCEL_PATH)
-
     wb = Workbook()
     ws = wb.active
     ws.title = "Pulse Metrics"
-
     header_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
     header_fill = PatternFill("solid", start_color="1F4E79")
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    thin = Border(
-        left=Side(style="thin"), right=Side(style="thin"),
-        top=Side(style="thin"), bottom=Side(style="thin"),
-    )
+    thin = Border(left=Side(style="thin"), right=Side(style="thin"),
+                  top=Side(style="thin"), bottom=Side(style="thin"))
     for i, h in enumerate(EXCEL_HEADERS, start=1):
         cell = ws.cell(row=1, column=i, value=h)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = center
         cell.border = thin
-
     ws.column_dimensions["A"].width = 14
     for col in range(2, len(EXCEL_HEADERS) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 22
     ws.row_dimensions[1].height = 36
-
     wb.save(EXCEL_PATH)
     return wb
 
 
-def append_row(wb, today: date, metrics: dict):
-    ws = wb.active
-    next_row = ws.max_row + 1
-    row_data = [today.isoformat()] + [metrics[h] for h in EXCEL_HEADERS[1:]]
-
-    for col, value in enumerate(row_data, start=1):
-        cell = ws.cell(row=next_row, column=col, value=value)
-        cell.alignment = Alignment(horizontal="center")
-
-    wb.save(EXCEL_PATH)
-    print(f"\n✅ Saved {len(metrics)} metrics for {today.isoformat()}")
-
-
 def main():
     today = date.today()
-    print(f"Scraping {URL} for {today} (3m view)...")
+    print(f"Scraping {URL} for {today}...")
+
+    api_responses = intercept_and_scrape()
+    metrics = parse_metrics_from_responses(api_responses)
 
     wb = get_or_create_workbook()
     ws = wb.active
-    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+
+    # Remove existing entry for today if any
+    rows_to_delete = []
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if row[0] == today.isoformat():
-            print(f"⚠️  Entry for {today} already exists. Skipping.")
-            return
+            rows_to_delete.append(i)
+    for i in reversed(rows_to_delete):
+        ws.delete_rows(i)
 
-    try:
-        metrics = scrape_metrics()
-    except Exception as e:
-        print(f"❌ Fatal scrape error: {e}", file=sys.stderr)
-        metrics = {h: "SCRAPE FAILED" for h in EXCEL_HEADERS[1:]}
-
-    append_row(wb, today, metrics)
+    next_row = ws.max_row + 1
+    row_data = [today.isoformat()] + [metrics[h] for h in EXCEL_HEADERS[1:]]
+    for col, value in enumerate(row_data, start=1):
+        cell = ws.cell(row=next_row, column=col, value=value)
+        cell.alignment = Alignment(horizontal="center")
+    wb.save(EXCEL_PATH)
+    print(f"✅ Row written for {today.isoformat()}")
 
 
 if __name__ == "__main__":
