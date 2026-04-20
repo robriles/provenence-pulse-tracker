@@ -1,0 +1,389 @@
+=== FULL PAGE TEXT ===
+Assets
+Governance
+Staking
+Wallet
+Provenance
+Pulse
+Hash Metrics
+The latest, up-to-date metrics for HASH, the utility token powering the Provenance Blockchain. Metrics are updated every 5 minutes.
+24h
+1w
+1m
+3m
+Today's Price
+i
+$0.011
+$0.017
+(60.7143%)
+Months
+Market Cap
+i
+$627.77M
+$875.21M
+(58.23%)
+Months
+Today's Volume
+i
+$17.6K
+$75.7K
+(81.13%)
+Months
+FDV
+i
+$1.1B
+$1.7B
+(60.71%)
+Months
+Total Supply
+i
+100B
+Circulating Supply
+i
+57.07B
+3.39B
+(6.32%)
+Months
+% Staked
+i
+17.4858%
+0.5316
+(3.1354%)
+Months
+Tokenomics
+Trade Hash
+Provenance Blockchain Metrics
+The latest, up-to-date metrics for assets and asset activity on the Provenance Blockchain. Metrics are updated every 5 minutes.
+24h
+1w
+1m
+3m
+TVL
+i
+$23.94B
+$300.81M
+(1.27%)
+Week
+Trading TVL
+i
+$641.79M
+$7.35M
+(1.16%)
+Week
+Week's Chain Transactions
+i
+61,832
+2,987
+(5.08%)
+Week
+Week's Chain Fees
+i
+$82,211
+$13,922
+(20.39%)
+Week
+Total Participants
+i
+74,566
+651
+(0.88%)
+Week
+Total Committed Value
+i
+$636.99M
+$9.87M
+(1.57%)
+Week
+Total Loan Balance
+i
+$17.64B
+$234.83M
+(1.35%)
+Week
+Total Loans
+i
+445.6K
+4.4K
+(0.99%)
+Week
+Week's Loan Amount Funded
+i
+$300.28M
+$30.37M
+(11.25%)
+Week
+Week's Loans Funded
+i
+3,124
+270
+(9.46%)
+Week
+Week's Loan Amount Paid
+i
+$88,876,085
+$5,596,961
+(6.72%)
+Week
+Week's Loans Paid
+i
+46,968
+2,907
+(6.6%)
+Week
+Active Entities
+Name	Type	Value	24h Trend
+
+Figure
+	Loans	$17,637,732,470.87	
+
+12,712,015
+
+(0.072%)
+
+
+
+Infineo
+	Insurance Policies	$625,321,164.00	
+
+0
+
+(0%)
+
+
+
+Figure Markets
+	Exchange	$551,045,394.38	
+
+2,919,015
+
+(0.52%)
+
+
+
+Figure Markets
+	Crypto-Backed Loans	$85,942,487.03	
+
+1,040,894
+
+(1%)
+
+Sign Up for Updates
+
+By submitting this form, you consent to receiving email communications from Provenance Blockchain and agree to our terms of use and privacy policy
+
+About
+
+Foundation
+White Paper & Tokenomics
+
+Use
+
+Tokenized Solutions
+Apps & Analytics
+
+Build
+
+Start Building
+Developer's Guide
+Participate
+Blog
+
+Copyright© 2026 Provenance Blockchain Inc
+
+Cookie Policy
+Privacy Policy
+Data Protection & Legal
+Press & Media Kit
+
+=== TEXT NODES ===
+[DIV] y=48 x=653: 'Assets'
+[DIV] y=48 x=774: 'Governance'
+[DIV] y=48 x=935: 'Staking'
+[BUTTON] y=48 x=1063: 'Wallet'
+[DIV] y=224 x=487: 'Provenance'
+[DIV] y=284 x=568: 'Pulse'
+[DIV] y=480 x=76: 'Hash Metrics'
+[DIV] y=522 x=76: 'The latest, up-to-date metrics for HASH, the utility token powering the Provenance Blockchain. Metrics are updated every 5 minutes.'
+[BUTTON] y=582 x=885: '24h'
+[BUTTON] y=582 x=958: '1w'
+[BUTTON] y=582 x=1020: '1m'
+[BUTTON] y=582 x=1084: '3m'
+[SPAN] y=658 x=91: "Today's Price"
+[SPAN] y=658 x=317: 'i'
+[SPAN] y=679 x=91: '$0.011'
+[SPAN] y=802 x=107: '$0.017'
+[SPAN] y=802 x=154: '(60.7143%)'
+[SPAN] y=797 x=265: 'Months'
+[SPAN] y=658 x=375: 'Market Cap'
+[SPAN] y=658 x=601: 'i'
+[SPAN] y=679 x=375: '$627.77M'
+[SPAN] y=802 x=391: '$875.21M'
+[SPAN] y=802 x=460: '(58.23%)'
+[SPAN] y=797 x=549: 'Months'
+[SPAN] y=658 x=659: "Today's Volume"
+[SPAN] y=658 x=885: 'i'
+[SPAN] y=679 x=659: '$17.6K'
+[SPAN] y=802 x=675: '$75.7K'
+[SPAN] y=802 x=725: '(81.13%)'
+[SPAN] y=797 x=833: 'Months'
+[SPAN] y=658 x=943: 'FDV'
+[SPAN] y=658 x=1169: 'i'
+[SPAN] y=679 x=943: '$1.1B'
+[SPAN] y=802 x=959: '$1.7B'
+[SPAN] y=802 x=997: '(60.71%)'
+[SPAN] y=797 x=1117: 'Months'
+[SPAN] y=879 x=91: 'Total Supply'
+[SPAN] y=880 x=412: 'i'
+[SPAN] y=900 x=91: '100B'
+[SPAN] y=879 x=470: 'Circulating Supply'
+[SPAN] y=880 x=790: 'i'
+[SPAN] y=900 x=470: '57.07B'
+[SPAN] y=1024 x=486: '3.39B'
+[SPAN] y=1024 x=531: '(6.32%)'
+[SPAN] y=1018 x=738: 'Months'
+[SPAN] y=879 x=848: '% Staked'
+[SPAN] y=880 x=1169: 'i'
+[SPAN] y=900 x=848: '17.4858%'
+[SPAN] y=1024 x=864: '0.5316'
+[SPAN] y=1024 x=913: '(3.1354%)'
+[SPAN] y=1018 x=1117: 'Months'
+[BUTTON] y=1105 x=506: 'Tokenomics'
+[BUTTON] y=1105 x=650: 'Trade Hash'
+[DIV] y=1250 x=76: 'Provenance Blockchain Metrics'
+[DIV] y=1292 x=76: 'The latest, up-to-date metrics for assets and asset activity on the Provenance Blockchain. Metrics are updated every 5 minutes.'
+[BUTTON] y=1352 x=885: '24h'
+[BUTTON] y=1352 x=958: '1w'
+[BUTTON] y=1352 x=1020: '1m'
+[BUTTON] y=1352 x=1084: '3m'
+[SPAN] y=1432 x=91: 'TVL'
+[SPAN] y=1432 x=404: 'i'
+[SPAN] y=1452 x=91: '$23.94B'
+[SPAN] y=1585 x=107: '$300.81M'
+[SPAN] y=1585 x=178: '(1.27%)'
+[SPAN] y=1580 x=371: 'Week'
+[SPAN] y=1432 x=470: 'Trading TVL'
+[SPAN] y=1432 x=782: 'i'
+[SPAN] y=1452 x=470: '$641.79M'
+[SPAN] y=1585 x=486: '$7.35M'
+[SPAN] y=1585 x=540: '(1.16%)'
+[SPAN] y=1580 x=749: 'Week'
+[SPAN] y=1432 x=848: "Week's Chain Transactions"
+[SPAN] y=1432 x=1161: 'i'
+[SPAN] y=1452 x=848: '61,832'
+[SPAN] y=1585 x=864: '2,987'
+[SPAN] y=1585 x=907: '(5.08%)'
+[SPAN] y=1580 x=1128: 'Week'
+[SPAN] y=1666 x=470: "Week's Chain Fees"
+[SPAN] y=1666 x=782: 'i'
+[SPAN] y=1686 x=470: '$82,211'
+[SPAN] y=1820 x=486: '$13,922'
+[SPAN] y=1820 x=544: '(20.39%)'
+[SPAN] y=1814 x=749: 'Week'
+[SPAN] y=1901 x=91: 'Total Participants'
+[SPAN] y=1901 x=404: 'i'
+[SPAN] y=1921 x=91: '74,566'
+[SPAN] y=2054 x=107: '651'
+[SPAN] y=2054 x=135: '(0.88%)'
+[SPAN] y=2049 x=371: 'Week'
+[SPAN] y=1901 x=470: 'Total Committed Value'
+[SPAN] y=1901 x=782: 'i'
+[SPAN] y=1921 x=470: '$636.99M'
+[SPAN] y=2054 x=486: '$9.87M'
+[SPAN] y=2054 x=541: '(1.57%)'
+[SPAN] y=2049 x=749: 'Week'
+[SPAN] y=1901 x=848: 'Total Loan Balance'
+[SPAN] y=1901 x=1161: 'i'
+[SPAN] y=1921 x=848: '$17.64B'
+[SPAN] y=2054 x=864: '$234.83M'
+[SPAN] y=2054 x=938: '(1.35%)'
+[SPAN] y=2049 x=1128: 'Week'
+[SPAN] y=2136 x=470: 'Total Loans'
+[SPAN] y=2136 x=782: 'i'
+[SPAN] y=2156 x=470: '445.6K'
+[SPAN] y=2289 x=486: '4.4K'
+[SPAN] y=2289 x=521: '(0.99%)'
+[SPAN] y=2284 x=749: 'Week'
+[SPAN] y=2136 x=848: "Week's Loan Amount Funded"
+[SPAN] y=2136 x=1161: 'i'
+[SPAN] y=2156 x=848: '$300.28M'
+[SPAN] y=2289 x=864: '$30.37M'
+[SPAN] y=2289 x=928: '(11.25%)'
+[SPAN] y=2284 x=1128: 'Week'
+[SPAN] y=2370 x=91: "Week's Loans Funded"
+[SPAN] y=2370 x=404: 'i'
+[SPAN] y=2390 x=91: '3,124'
+[SPAN] y=2523 x=107: '270'
+[SPAN] y=2523 x=137: '(9.46%)'
+[SPAN] y=2518 x=371: 'Week'
+[SPAN] y=2370 x=470: "Week's Loan Amount Paid"
+[SPAN] y=2370 x=782: 'i'
+[SPAN] y=2390 x=470: '$88,876,085'
+[SPAN] y=2523 x=486: '$5,596,961'
+[SPAN] y=2523 x=568: '(6.72%)'
+[SPAN] y=2518 x=749: 'Week'
+[SPAN] y=2370 x=848: "Week's Loans Paid"
+[SPAN] y=2370 x=1161: 'i'
+[SPAN] y=2390 x=848: '46,968'
+[SPAN] y=2523 x=864: '2,907'
+[SPAN] y=2523 x=907: '(6.6%)'
+[SPAN] y=2518 x=1128: 'Week'
+[DIV] y=2613 x=76: 'Active Entities'
+[TH] y=2698 x=101: 'Name'
+[TH] y=2698 x=386: 'Type'
+[TH] y=2698 x=660: 'Value'
+[TH] y=2698 x=895: '24h Trend'
+[SPAN] y=2768 x=165: 'Figure'
+[TD] y=2746 x=386: 'Loans'
+[TD] y=2746 x=660: '$'
+[TD] y=2746 x=660: '17,637,732,470.87'
+[P] y=2768 x=939: '12,712,015'
+[P] y=2768 x=997: '('
+[P] y=2768 x=997: '0.072'
+[P] y=2768 x=997: '%)'
+[SPAN] y=2833 x=165: 'Infineo'
+[TD] y=2811 x=386: 'Insurance Policies'
+[TD] y=2811 x=660: '$'
+[TD] y=2811 x=660: '625,321,164.00'
+[P] y=2833 x=939: '0'
+[P] y=2833 x=952: '('
+[P] y=2833 x=952: '0'
+[P] y=2833 x=952: '%)'
+[SPAN] y=2898 x=165: 'Figure Markets'
+[TD] y=2876 x=386: 'Exchange'
+[TD] y=2876 x=660: '$'
+[TD] y=2876 x=660: '551,045,394.38'
+[P] y=2898 x=939: '2,919,015'
+[P] y=2898 x=994: '('
+[P] y=2898 x=994: '0.52'
+[P] y=2898 x=994: '%)'
+[SPAN] y=2963 x=165: 'Figure Markets'
+[TD] y=2941 x=386: 'Crypto-Backed Loans'
+[TD] y=2941 x=660: '$'
+[TD] y=2941 x=660: '85,942,487.03'
+[P] y=2963 x=939: '1,040,894'
+[P] y=2963 x=1001: '('
+[P] y=2963 x=1001: '1'
+[P] y=2963 x=1001: '%)'
+[P] y=3122 x=185: 'Sign Up for Updates'
+[P] y=3176 x=185: 'By submitting this form, you consent to receiving email communications from Provenance Blockchain and agree to our'
+[A] y=3192 x=368: 'terms of use'
+[P] y=3176 x=185: 'and'
+[A] y=3192 x=445: 'privacy policy'
+[P] y=3122 x=680: 'About'
+[A] y=3152 x=696: 'Foundation'
+[A] y=3181 x=696: 'White Paper & Tokenomics'
+[P] y=3226 x=680: 'Use'
+[A] y=3256 x=696: 'Tokenized Solutions'
+[A] y=3285 x=696: 'Apps & Analytics'
+[P] y=3122 x=950: 'Build'
+[A] y=3152 x=966: 'Start Building'
+[A] y=3181 x=966: "Developer's Guide"
+[A] y=3226 x=950: 'Participate'
+[A] y=3272 x=950: 'Blog'
+[P] y=3427 x=60: 'Copyright©'
+[P] y=3427 x=60: '2026'
+[P] y=3427 x=60: 'Provenance Blockchain Inc'
+[A] y=3427 x=588: 'Cookie Policy'
+[A] y=3427 x=734: 'Privacy Policy'
+[A] y=3427 x=880: 'Data Protection & Legal'
+[A] y=3427 x=1097: 'Press & Media Kit'
