@@ -46,44 +46,133 @@ EXCEL_HEADERS = [
     "3M Loans Paid",
 ]
 
-# These are the exact label texts on the page after clicking 3m.
-# The page changes "Week's" to "3 Months" when 3m is selected.
-# We match by partial text to handle both cases robustly.
+# From the debug output we know the exact label text on the page.
+# After clicking 3m, labels change from "Week's X" to "3 Months X".
+# We match by the stable part that doesn't change between time periods.
 METRIC_LABEL_PATTERNS = [
-    "TVL",
-    "Trading TVL",
-    "Chain Transactions",
-    "Chain Fees",
-    "Total Participants",
-    "Committed Value",
-    "Loan Balance",
-    "Total Loans",
-    "Loan Amount Funded",
-    "Loans Funded",
-    "Loan Amount Paid",
-    "Loans Paid",
+    ("TVL",                "TVL"),
+    ("Trading TVL",        "Trading TVL"),
+    ("3M Chain Transactions", "Chain Transactions"),
+    ("3M Chain Fees",      "Chain Fees"),
+    ("Total Participants", "Total Participants"),
+    ("Total Committed Value", "Committed Value"),
+    ("Total Loan Balance", "Loan Balance"),
+    ("Total Loans",        "Total Loans"),
+    ("3M Loan Amount Funded", "Loan Amount Funded"),
+    ("3M Loans Funded",    "Loans Funded"),
+    ("3M Loan Amount Paid","Loan Amount Paid"),
+    ("3M Loans Paid",      "Loans Paid"),
 ]
 
 
-def click_3m_button(page):
-    """Click the 3m button in the Provenance Blockchain Metrics section."""
-    # There are two sets of time buttons (Hash Metrics + Blockchain Metrics).
-    # We want the SECOND set. Get all 3m buttons and click the last one.
-    try:
-        buttons = page.locator("button", has_text=re.compile(r"^3m$", re.IGNORECASE)).all()
-        if buttons:
-            buttons[-1].click()
-            page.wait_for_timeout(4000)
-            print(f"  Clicked 3m button (found {len(buttons)} total)")
-        else:
-            print("  No 3m button found, proceeding with default")
-    except Exception as e:
-        print(f"  Could not click 3m: {e}")
+def get_span_nodes(page):
+    return page.evaluate("""
+        () => {
+            const spans = document.querySelectorAll('span');
+            const results = [];
+            for (const span of spans) {
+                const text = span.textContent.trim();
+                if (text.length === 0) continue;
+                const rect = span.getBoundingClientRect();
+                if (rect.width === 0) continue;
+                results.push({ text: text, y: Math.round(rect.top), x: Math.round(rect.left) });
+            }
+            return results;
+        }
+    """)
+
+
+def click_3m_and_verify(page):
+    """Click the 3m button for Blockchain Metrics and verify the labels changed."""
+    # There are two 3m button groups — Hash Metrics and Blockchain Metrics.
+    # From debug: both sets are at y~582 and y~1352. We want the second (higher y).
+    for attempt in range(3):
+        try:
+            buttons = page.locator("button").filter(has_text=re.compile(r"^3m$")).all()
+            print(f"  Found {len(buttons)} '3m' buttons (attempt {attempt+1})")
+            if len(buttons) >= 2:
+                # Click the second 3m button (Blockchain Metrics section)
+                buttons[1].click()
+            elif len(buttons) == 1:
+                buttons[0].click()
+            else:
+                print("  No 3m buttons found!")
+                return False
+
+            # Wait for labels to update — look for "3 Months" text appearing
+            page.wait_for_timeout(5000)
+
+            # Verify by checking if any span now contains "3 Months"
+            nodes = get_span_nodes(page)
+            has_3m = any("3 Months" in n['text'] or "months" in n['text'].lower() for n in nodes)
+            if has_3m:
+                print("  ✅ 3m view confirmed active")
+                return True
+            else:
+                print(f"  ⚠️  3m labels not detected yet, retrying...")
+                page.wait_for_timeout(3000)
+
+        except Exception as e:
+            print(f"  Button click error: {e}")
+            page.wait_for_timeout(2000)
+
+    print("  Proceeding despite unconfirmed 3m state")
+    return False
+
+
+def extract_metrics_from_nodes(nodes):
+    """Match label patterns to values using position-aware span extraction."""
+    results = {h: "N/A" for h in EXCEL_HEADERS[1:]}
+
+    # Only look at spans in the Blockchain Metrics section (y > 1200 from debug)
+    # This avoids accidentally matching Hash Metrics labels like "Total Supply"
+    blockchain_nodes = [n for n in nodes if n['y'] > 1200]
+    print(f"  Blockchain section spans: {len(blockchain_nodes)}")
+
+    for header, pattern in METRIC_LABEL_PATTERNS:
+        found = False
+        for j, node in enumerate(blockchain_nodes):
+            node_text = node['text']
+            if pattern.lower() in node_text.lower() and len(node_text) < 80:
+                # Value span is typically the next numeric span at a lower y position
+                label_y = node['y']
+                label_x = node['x']
+
+                # Look for the value: a span below this label (higher y),
+                # similar x position, containing a number
+                for k in range(j + 1, min(j + 8, len(blockchain_nodes))):
+                    candidate = blockchain_nodes[k]
+                    c_text = candidate['text'].strip()
+
+                    # Skip 'i' (info icon), pure percentages, and change indicators
+                    if c_text == 'i':
+                        continue
+                    if re.match(r'^\(.*%\)$', c_text):
+                        continue
+                    if re.match(r'^[\+\-]?\d+(\.\d+)?%$', c_text):
+                        continue
+
+                    # Must contain digits
+                    if not re.search(r'\d', c_text):
+                        continue
+
+                    # Must look like a real value (dollar, number with commas, etc.)
+                    if re.search(r'[\$\d,\.]+[BMKTbmkt]?', c_text):
+                        results[header] = c_text
+                        print(f"  {header}: {c_text}")
+                        found = True
+                        break
+
+                if found:
+                    break
+
+        if not found:
+            print(f"  {header}: NOT FOUND")
+
+    return results
 
 
 def scrape_metrics() -> dict:
-    results = {h: "N/A" for h in EXCEL_HEADERS[1:]}
-
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -96,59 +185,16 @@ def scrape_metrics() -> dict:
             page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="networkidle")
         except PlaywrightTimeout:
             page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(8000)
+            page.wait_for_timeout(10000)
 
-        print("Selecting 3m time period...")
-        click_3m_button(page)
+        print("Clicking 3m button...")
+        click_3m_and_verify(page)
 
-        # Extract all SPAN text nodes with their positions
-        print("Extracting text nodes...")
-        nodes = page.evaluate("""
-            () => {
-                const spans = document.querySelectorAll('span');
-                const results = [];
-                for (const span of spans) {
-                    const text = span.textContent.trim();
-                    if (text.length === 0) continue;
-                    const rect = span.getBoundingClientRect();
-                    if (rect.width === 0) continue;
-                    results.push({ text: text, y: rect.top, x: rect.left });
-                }
-                return results;
-            }
-        """)
+        print("Extracting metrics...")
+        nodes = get_span_nodes(page)
+        print(f"Total spans on page: {len(nodes)}")
 
-        print(f"Found {len(nodes)} span nodes")
-
-        # For each metric label pattern, find the matching span,
-        # then find the next span that looks like a value (has digits)
-        for i, pattern in enumerate(METRIC_LABEL_PATTERNS):
-            header = EXCEL_HEADERS[i + 1]
-            found = False
-
-            for j, node in enumerate(nodes):
-                if pattern.lower() in node['text'].lower() and len(node['text']) < 60:
-                    # Look at the next few spans for a numeric value
-                    for k in range(j + 1, min(j + 5, len(nodes))):
-                        candidate = nodes[k]['text']
-                        # Must contain digits and look like a real value
-                        if re.search(r'\d', candidate) and candidate not in ['i', '%']:
-                            # Skip pure percentages or tiny numbers that are change indicators
-                            # A main value is usually on a similar x position and close y
-                            if re.search(r'[\$\d,\.]+[BMKTbmkt]?', candidate):
-                                clean = candidate.strip()
-                                # Filter out change % values like "(1.27%)"
-                                if not re.match(r'^\(.*%\)$', clean):
-                                    results[header] = clean
-                                    print(f"  {header}: {clean}  (label: '{node['text']}')")
-                                    found = True
-                                    break
-                    if found:
-                        break
-
-            if not found:
-                print(f"  {header}: NOT FOUND (pattern: '{pattern}')")
-
+        results = extract_metrics_from_nodes(nodes)
         browser.close()
 
     return results
