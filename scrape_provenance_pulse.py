@@ -86,14 +86,9 @@ def fetch_metric(metric_name: str) -> str:
             (data if isinstance(data, list) else None)
         )
 
-        if points and len(points) > 0:
-            latest = points[-1]
-            value = (
-                latest.get("value") or
-                latest.get("amount") or
-                latest.get("count") or
-                latest.get("total")
-            )
+        # API returns a single object with keys: id, base, amount, quote, quoteAmount, trend, progress, series
+        if isinstance(data, dict):
+            value = data.get("amount") or data.get("quoteAmount") or data.get("base")
             if value is not None:
                 return str(value)
 
