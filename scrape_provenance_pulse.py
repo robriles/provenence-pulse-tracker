@@ -1,8 +1,9 @@
 """
-Provenance Pulse Daily Scraper - Direct API Version
-=====================================================
-Calls the Provenance Explorer API directly to fetch all 12 metrics
-and appends them with today's date to an Excel spreadsheet.
+Provenance Pulse Daily Scraper
+================================
+Fetches Provenance Blockchain metrics directly from the Explorer API.
+- 6 static metrics (single value, no time range variation)
+- 6 time-series metrics captured across 24h, 1w, 1m, 3m
 
 SETUP (run once):
     pip install requests openpyxl
@@ -14,7 +15,6 @@ SCHEDULE (run daily):
 """
 
 import sys
-import json
 import requests
 from datetime import date
 from pathlib import Path
@@ -25,98 +25,87 @@ from openpyxl.utils import get_column_letter
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 BASE_URL = "https://service-explorer.provenance.io/api/pulse/metric/type"
-RANGE = "3m"
 EXCEL_PATH = Path(__file__).parent / "provenance_pulse_tracker.xlsx"
 # ──────────────────────────────────────────────────────────────────────────────
 
-EXCEL_HEADERS = [
-    "Date",
-    "TVL",
-    "Trading TVL",
-    "3M Chain Transactions",
-    "3M Chain Fees",
-    "Total Participants",
-    "Total Committed Value",
-    "Total Loan Balance",
-    "Total Loans",
-    "3M Loan Amount Funded",
-    "3M Loans Funded",
-    "3M Loan Amount Paid",
-    "3M Loans Paid",
-]
-
-# Maps Excel header -> API metric type name
-METRICS = {
-    "TVL":                    "PULSE_TVL_METRIC",
-    "Trading TVL":            "PULSE_TRADING_TVL_METRIC",
-    "3M Chain Transactions":  "PULSE_TRANSACTION_VOLUME_METRIC",
-    "3M Chain Fees":          "PULSE_CHAIN_FEES_VALUE_METRIC",
-    "Total Participants":     "PULSE_PARTICIPANTS_METRIC",
-    "Total Committed Value":  "PULSE_COMMITTED_ASSETS_VALUE_METRIC",
-    "Total Loan Balance":     "LOAN_LEDGER_TOTAL_BALANCE_METRIC",
-    "Total Loans":            "LOAN_LEDGER_TOTAL_COUNT_METRIC",
-    "3M Loan Amount Funded":  "LOAN_LEDGER_DISBURSEMENTS_METRIC",
-    "3M Loans Funded":        "LOAN_LEDGER_DISBURSEMENT_COUNT_METRIC",
-    "3M Loan Amount Paid":    "LOAN_LEDGER_PAYMENTS_METRIC",
-    "3M Loans Paid":          "LOAN_LEDGER_TOTAL_PAYMENTS_METRIC",
-}
-
-HEADERS = {
+HEADERS_HTTP = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
     "Referer": "https://provenance.io/",
     "Origin": "https://provenance.io",
 }
 
+# Static metrics — fetched once with 3m range (range doesn't affect their value)
+STATIC_METRICS = {
+    "TVL":                   "PULSE_TVL_METRIC",
+    "Trading TVL":           "PULSE_TRADING_TVL_METRIC",
+    "Total Participants":    "PULSE_PARTICIPANTS_METRIC",
+    "Total Committed Value": "PULSE_COMMITTED_ASSETS_VALUE_METRIC",
+    "Total Loan Balance":    "LOAN_LEDGER_TOTAL_BALANCE_METRIC",
+    "Total Loans":           "LOAN_LEDGER_TOTAL_COUNT_METRIC",
+}
 
-def fetch_metric(metric_name: str) -> str:
-    """Fetch a single metric from the API and return its current value as a string."""
-    url = f"{BASE_URL}/{metric_name}?range={RANGE}"
+# Time-series metrics — fetched for each of 24h, 1w, 1m, 3m
+TIME_SERIES_METRICS = {
+    "Chain Transactions":  "PULSE_TRANSACTION_VOLUME_METRIC",
+    "Chain Fees":          "PULSE_CHAIN_FEES_VALUE_METRIC",
+    "Loan Amount Funded":  "LOAN_LEDGER_DISBURSEMENTS_METRIC",
+    "Loans Funded":        "LOAN_LEDGER_DISBURSEMENT_COUNT_METRIC",
+    "Loan Amount Paid":    "LOAN_LEDGER_PAYMENTS_METRIC",
+    "Loans Paid":          "LOAN_LEDGER_TOTAL_PAYMENTS_METRIC",
+}
+
+RANGES = ["24h", "1w", "1m", "3m"]
+
+# Build full ordered header list
+EXCEL_HEADERS = ["Date"] + list(STATIC_METRICS.keys())
+for metric in TIME_SERIES_METRICS.keys():
+    for r in RANGES:
+        EXCEL_HEADERS.append(f"{metric} ({r})")
+
+
+def fetch_metric(metric_name: str, range_val: str) -> str:
+    url = f"{BASE_URL}/{metric_name}?range={range_val}"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp = requests.get(url, headers=HEADERS_HTTP, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-
-        # The API returns a list of data points; the last one is the most recent
-        # Structure is typically: { "data": [{"value": ..., "date": ...}, ...] }
-        # or { "metricData": [...] } — handle both
-        points = (
-            data.get("data") or
-            data.get("metricData") or
-            data.get("metrics") or
-            (data if isinstance(data, list) else None)
-        )
-
-        # API returns a single object with keys: id, base, amount, quote, quoteAmount, trend, progress, series
         if isinstance(data, dict):
             value = data.get("amount") or data.get("quoteAmount") or data.get("base")
             if value is not None:
                 return str(value)
-
-        # Fallback: dump keys for debugging
-        print(f"  Unexpected structure for {metric_name}: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        print(f"  Unexpected structure for {metric_name} ({range_val}): {list(data.keys()) if isinstance(data, dict) else type(data)}")
         return "Parse error"
-
     except requests.HTTPError as e:
-        print(f"  HTTP error for {metric_name}: {e}")
         return f"HTTP {resp.status_code}"
     except Exception as e:
-        print(f"  Error for {metric_name}: {e}")
+        print(f"  Error for {metric_name} ({range_val}): {e}")
         return "Error"
 
 
 def scrape_all_metrics() -> dict:
     results = {}
-    for header in EXCEL_HEADERS[1:]:
-        metric_name = METRICS[header]
-        value = fetch_metric(metric_name)
-        results[header] = value
-        print(f"  {header}: {value}")
+
+    # Static metrics (3m range)
+    for label, api_name in STATIC_METRICS.items():
+        value = fetch_metric(api_name, "3m")
+        results[label] = value
+        print(f"  {label}: {value}")
+
+    # Time-series metrics across all ranges
+    for label, api_name in TIME_SERIES_METRICS.items():
+        for r in RANGES:
+            col = f"{label} ({r})"
+            value = fetch_metric(api_name, r)
+            results[col] = value
+            print(f"  {col}: {value}")
+
     return results
 
 
 def get_or_create_workbook():
     if EXCEL_PATH.exists():
         return load_workbook(EXCEL_PATH)
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Pulse Metrics"
@@ -142,7 +131,7 @@ def get_or_create_workbook():
 def append_row(wb, today: date, metrics: dict):
     ws = wb.active
     next_row = ws.max_row + 1
-    row_data = [today.isoformat()] + [metrics[h] for h in EXCEL_HEADERS[1:]]
+    row_data = [today.isoformat()] + [metrics.get(h, "N/A") for h in EXCEL_HEADERS[1:]]
     for col, value in enumerate(row_data, start=1):
         cell = ws.cell(row=next_row, column=col, value=value)
         cell.alignment = Alignment(horizontal="center")
@@ -152,7 +141,7 @@ def append_row(wb, today: date, metrics: dict):
 
 def main():
     today = date.today()
-    print(f"Fetching Provenance Pulse metrics for {today} (range={RANGE})...")
+    print(f"Fetching Provenance Pulse metrics for {today}...")
 
     wb = get_or_create_workbook()
     ws = wb.active
