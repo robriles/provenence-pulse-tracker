@@ -1,8 +1,8 @@
 """
 Provenance Pulse Daily Scraper
 ================================
-Scrapes all 12 metrics from https://provenance.io/pulse (3m time period)
-and appends them with today's date to an Excel spreadsheet.
+Scrapes all 12 Provenance Blockchain Metrics from https://provenance.io/pulse
+on the 3m time period, and appends them with today's date to an Excel spreadsheet.
 
 SETUP (run once):
     pip install playwright openpyxl
@@ -11,13 +11,11 @@ SETUP (run once):
 SCHEDULE (run daily):
   Mac/Linux — crontab -e, add:
     0 13 * * * /usr/bin/python3 /path/to/scrape_provenance_pulse.py
-
   Windows — Task Scheduler, Daily at 8:00 AM ET
 """
 
 import re
 import sys
-import json
 from datetime import date
 from pathlib import Path
 
@@ -48,8 +46,10 @@ EXCEL_HEADERS = [
     "3M Loans Paid",
 ]
 
-# Partial label strings to search for (case-insensitive, flexible matching)
-METRIC_SEARCH = [
+# These are the exact label texts on the page after clicking 3m.
+# The page changes "Week's" to "3 Months" when 3m is selected.
+# We match by partial text to handle both cases robustly.
+METRIC_LABEL_PATTERNS = [
     "TVL",
     "Trading TVL",
     "Chain Transactions",
@@ -65,20 +65,20 @@ METRIC_SEARCH = [
 ]
 
 
-def extract_value(text: str) -> str:
-    """Pull the first recognizable numeric/dollar value from a block of text."""
-    # Match things like $23.94B, $641.69M, 1,246,088, 74,559, $990,884,746
-    match = re.search(
-        r"(\$\s*[\d,]+(?:\.\d+)?\s*[BMKTbmkt]?|[\d,]+(?:\.\d+)?\s*[BMKTbmkt]?)",
-        text
-    )
-    if match:
-        val = match.group(1).strip()
-        # Filter out bare single/double digit numbers (likely UI noise)
-        digits_only = re.sub(r"[,$\s]", "", val)
-        if len(digits_only) >= 3:
-            return val
-    return "Parse error"
+def click_3m_button(page):
+    """Click the 3m button in the Provenance Blockchain Metrics section."""
+    # There are two sets of time buttons (Hash Metrics + Blockchain Metrics).
+    # We want the SECOND set. Get all 3m buttons and click the last one.
+    try:
+        buttons = page.locator("button", has_text=re.compile(r"^3m$", re.IGNORECASE)).all()
+        if buttons:
+            buttons[-1].click()
+            page.wait_for_timeout(4000)
+            print(f"  Clicked 3m button (found {len(buttons)} total)")
+        else:
+            print("  No 3m button found, proceeding with default")
+    except Exception as e:
+        print(f"  Could not click 3m: {e}")
 
 
 def scrape_metrics() -> dict:
@@ -98,101 +98,124 @@ def scrape_metrics() -> dict:
             page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="domcontentloaded")
             page.wait_for_timeout(8000)
 
-        # Click the 3m button — try multiple selector strategies
         print("Selecting 3m time period...")
-        clicked = False
-        for selector in [
-            "text=3m", "text=3M",
-            "button:has-text('3m')", "button:has-text('3M')",
-            "[class*='tab']:has-text('3m')", "[class*='button']:has-text('3m')",
-        ]:
-            try:
-                el = page.locator(selector).first
-                el.click(timeout=3000)
-                page.wait_for_timeout(4000)
-                clicked = True
-                print(f"  Clicked 3m via: {selector}")
-                break
-            except Exception:
-                continue
-        if not clicked:
-            print("  Could not click 3m button — proceeding with default view")
+        click_3m_button(page)
 
-        # Dump full page text for debugging
-        page.wait_for_timeout(3000)
-        full_text = page.inner_text("body")
-        print("\n--- PAGE TEXT DUMP (first 3000 chars) ---")
-        print(full_text[:3000])
-        print("--- END DUMP ---\n")
-
-        # Strategy: get ALL card-like elements and match by label proximity
-        # Try to find metric cards using common dashboard patterns
-        cards_found = 0
-
-        # Try approach 1: find all elements that contain a dollar sign or large number
-        # paired with a nearby label
-        all_elements = page.locator("body *").all()
-
-        # Build a map of label -> value by scanning all text nodes
-        # Look for patterns where a short label is near a large value
-        # Use page.evaluate to extract structured data via JS
-        card_data = page.evaluate("""
+        # Extract all SPAN text nodes with their positions
+        print("Extracting text nodes...")
+        nodes = page.evaluate("""
             () => {
+                const spans = document.querySelectorAll('span');
                 const results = [];
-                // Get all visible text elements
-                const walker = document.createTreeWalker(
-                    document.body,
-                    NodeFilter.SHOW_TEXT,
-                    null
-                );
-                const texts = [];
-                let node;
-                while (node = walker.nextNode()) {
-                    const text = node.textContent.trim();
-                    if (text.length > 0 && text.length < 200) {
-                        const rect = node.parentElement 
-                            ? node.parentElement.getBoundingClientRect() 
-                            : null;
-                        if (rect && rect.width > 0) {
-                            texts.push({
-                                text: text,
-                                y: rect.top,
-                                x: rect.left,
-                                tag: node.parentElement ? node.parentElement.tagName : ''
-                            });
-                        }
-                    }
+                for (const span of spans) {
+                    const text = span.textContent.trim();
+                    if (text.length === 0) continue;
+                    const rect = span.getBoundingClientRect();
+                    if (rect.width === 0) continue;
+                    results.push({ text: text, y: rect.top, x: rect.left });
                 }
-                return texts;
+                return results;
             }
         """)
 
-        print(f"Found {len(card_data)} text nodes on page")
+        print(f"Found {len(nodes)} span nodes")
 
-        # Print all text nodes for debugging
-        for item in card_data:
-            print(f"  [{item['tag']}] y={item['y']:.0f} x={item['x']:.0f}: {item['text']!r}")
+        # For each metric label pattern, find the matching span,
+        # then find the next span that looks like a value (has digits)
+        for i, pattern in enumerate(METRIC_LABEL_PATTERNS):
+            header = EXCEL_HEADERS[i + 1]
+            found = False
+
+            for j, node in enumerate(nodes):
+                if pattern.lower() in node['text'].lower() and len(node['text']) < 60:
+                    # Look at the next few spans for a numeric value
+                    for k in range(j + 1, min(j + 5, len(nodes))):
+                        candidate = nodes[k]['text']
+                        # Must contain digits and look like a real value
+                        if re.search(r'\d', candidate) and candidate not in ['i', '%']:
+                            # Skip pure percentages or tiny numbers that are change indicators
+                            # A main value is usually on a similar x position and close y
+                            if re.search(r'[\$\d,\.]+[BMKTbmkt]?', candidate):
+                                clean = candidate.strip()
+                                # Filter out change % values like "(1.27%)"
+                                if not re.match(r'^\(.*%\)$', clean):
+                                    results[header] = clean
+                                    print(f"  {header}: {clean}  (label: '{node['text']}')")
+                                    found = True
+                                    break
+                    if found:
+                        break
+
+            if not found:
+                print(f"  {header}: NOT FOUND (pattern: '{pattern}')")
 
         browser.close()
 
-    return results, card_data, full_text
+    return results
+
+
+def get_or_create_workbook():
+    if EXCEL_PATH.exists():
+        return load_workbook(EXCEL_PATH)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Pulse Metrics"
+
+    header_font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+    header_fill = PatternFill("solid", start_color="1F4E79")
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+    for i, h in enumerate(EXCEL_HEADERS, start=1):
+        cell = ws.cell(row=1, column=i, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = thin
+
+    ws.column_dimensions["A"].width = 14
+    for col in range(2, len(EXCEL_HEADERS) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 22
+    ws.row_dimensions[1].height = 36
+
+    wb.save(EXCEL_PATH)
+    return wb
+
+
+def append_row(wb, today: date, metrics: dict):
+    ws = wb.active
+    next_row = ws.max_row + 1
+    row_data = [today.isoformat()] + [metrics[h] for h in EXCEL_HEADERS[1:]]
+
+    for col, value in enumerate(row_data, start=1):
+        cell = ws.cell(row=next_row, column=col, value=value)
+        cell.alignment = Alignment(horizontal="center")
+
+    wb.save(EXCEL_PATH)
+    print(f"\n✅ Saved {len(metrics)} metrics for {today.isoformat()}")
 
 
 def main():
-    print(f"DEBUG MODE: Scraping {URL} to understand page structure...")
-    metrics, card_data, full_text = scrape_metrics()
+    today = date.today()
+    print(f"Scraping {URL} for {today} (3m view)...")
 
-    # Save debug info
-    debug_path = Path(__file__).parent / "debug_output.txt"
-    with open(debug_path, "w") as f:
-        f.write("=== FULL PAGE TEXT ===\n")
-        f.write(full_text)
-        f.write("\n\n=== TEXT NODES ===\n")
-        for item in card_data:
-            f.write(f"[{item['tag']}] y={item['y']:.0f} x={item['x']:.0f}: {item['text']!r}\n")
+    wb = get_or_create_workbook()
+    ws = wb.active
+    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+        if row[0] == today.isoformat():
+            print(f"⚠️  Entry for {today} already exists. Skipping.")
+            return
 
-    print(f"\nDebug info saved to {debug_path}")
-    print("Please share debug_output.txt so we can fix the scraper!")
+    try:
+        metrics = scrape_metrics()
+    except Exception as e:
+        print(f"❌ Fatal scrape error: {e}", file=sys.stderr)
+        metrics = {h: "SCRAPE FAILED" for h in EXCEL_HEADERS[1:]}
+
+    append_row(wb, today, metrics)
 
 
 if __name__ == "__main__":
