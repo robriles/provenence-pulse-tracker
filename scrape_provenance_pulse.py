@@ -1,11 +1,18 @@
 """
-Provenance Pulse Daily Scraper - API Intercept Version
-=======================================================
-Intercepts the network API calls made by provenance.io/pulse
-to find and directly call the underlying data endpoints.
+Provenance Pulse Daily Scraper - Direct API Version
+=====================================================
+Calls the Provenance Explorer API directly to fetch all 12 metrics
+and appends them with today's date to an Excel spreadsheet.
+
+SETUP (run once):
+    pip install requests openpyxl
+
+SCHEDULE (run daily):
+  Mac/Linux — crontab -e, add:
+    0 13 * * * /usr/bin/python3 /path/to/scrape_provenance_pulse.py
+  Windows — Task Scheduler, Daily at 8:00 AM ET
 """
 
-import re
 import sys
 import json
 import requests
@@ -15,124 +22,100 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-URL = "https://provenance.io/pulse"
+BASE_URL = "https://service-explorer.provenance.io/api/pulse/metric/type"
+RANGE = "3m"
 EXCEL_PATH = Path(__file__).parent / "provenance_pulse_tracker.xlsx"
-PAGE_TIMEOUT = 60_000
 # ──────────────────────────────────────────────────────────────────────────────
 
 EXCEL_HEADERS = [
-    "Date", "TVL", "Trading TVL", "3M Chain Transactions", "3M Chain Fees",
-    "Total Participants", "Total Committed Value", "Total Loan Balance",
-    "Total Loans", "3M Loan Amount Funded", "3M Loans Funded",
-    "3M Loan Amount Paid", "3M Loans Paid",
+    "Date",
+    "TVL",
+    "Trading TVL",
+    "3M Chain Transactions",
+    "3M Chain Fees",
+    "Total Participants",
+    "Total Committed Value",
+    "Total Loan Balance",
+    "Total Loans",
+    "3M Loan Amount Funded",
+    "3M Loans Funded",
+    "3M Loan Amount Paid",
+    "3M Loans Paid",
 ]
 
+# Maps Excel header -> API metric type name
+METRICS = {
+    "TVL":                    "PULSE_TVL_METRIC",
+    "Trading TVL":            "PULSE_TRADING_TVL_METRIC",
+    "3M Chain Transactions":  "PULSE_TRANSACTION_VOLUME_METRIC",
+    "3M Chain Fees":          "PULSE_CHAIN_FEES_VALUE_METRIC",
+    "Total Participants":     "PULSE_PARTICIPANTS_METRIC",
+    "Total Committed Value":  "PULSE_COMMITTED_ASSETS_VALUE_METRIC",
+    "Total Loan Balance":     "LOAN_LEDGER_TOTAL_BALANCE_METRIC",
+    "Total Loans":            "LOAN_LEDGER_TOTAL_COUNT_METRIC",
+    "3M Loan Amount Funded":  "LOAN_LEDGER_DISBURSEMENTS_METRIC",
+    "3M Loans Funded":        "LOAN_LEDGER_DISBURSEMENT_COUNT_METRIC",
+    "3M Loan Amount Paid":    "LOAN_LEDGER_PAYMENTS_METRIC",
+    "3M Loans Paid":          "LOAN_LEDGER_TOTAL_PAYMENTS_METRIC",
+}
 
-def intercept_and_scrape():
-    """Launch browser, intercept API calls, and extract data directly from responses."""
-    api_calls = []
-    api_responses = {}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://provenance.io/",
+    "Origin": "https://provenance.io",
+}
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
+
+def fetch_metric(metric_name: str) -> str:
+    """Fetch a single metric from the API and return its current value as a string."""
+    url = f"{BASE_URL}/{metric_name}?range={RANGE}"
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # The API returns a list of data points; the last one is the most recent
+        # Structure is typically: { "data": [{"value": ..., "date": ...}, ...] }
+        # or { "metricData": [...] } — handle both
+        points = (
+            data.get("data") or
+            data.get("metricData") or
+            data.get("metrics") or
+            (data if isinstance(data, list) else None)
         )
 
-        # Intercept all API responses
-        def handle_response(response):
-            url = response.url
-            # Capture any JSON API calls that look relevant
-            if any(kw in url.lower() for kw in ['pulse', 'metric', 'tvl', 'loan', 'chain', 'stats']):
-                try:
-                    body = response.body()
-                    text = body.decode('utf-8', errors='ignore')
-                    if text.strip().startswith('{') or text.strip().startswith('['):
-                        api_calls.append(url)
-                        api_responses[url] = text
-                        print(f"  Captured API: {url}")
-                except Exception:
-                    pass
+        if points and len(points) > 0:
+            latest = points[-1]
+            value = (
+                latest.get("value") or
+                latest.get("amount") or
+                latest.get("count") or
+                latest.get("total")
+            )
+            if value is not None:
+                return str(value)
 
-        # Also capture ALL json responses to find the right one
-        def handle_any_response(response):
-            url = response.url
-            content_type = response.headers.get('content-type', '')
-            if 'json' in content_type and 'provenance' in url:
-                try:
-                    body = response.body()
-                    text = body.decode('utf-8', errors='ignore')
-                    if len(text) > 50:
-                        api_calls.append(url)
-                        api_responses[url] = text[:2000]
-                        print(f"  Captured JSON: {url[:120]}")
-                except Exception:
-                    pass
+        # Fallback: dump keys for debugging
+        print(f"  Unexpected structure for {metric_name}: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        return "Parse error"
 
-        page = context.new_page()
-        page.on("response", handle_any_response)
-
-        print("Loading page and intercepting API calls...")
-        try:
-            page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="networkidle")
-        except PlaywrightTimeout:
-            page.goto(URL, timeout=PAGE_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_timeout(15000)
-
-        # Wait extra to catch lazy-loaded data
-        page.wait_for_timeout(8000)
-
-        browser.close()
-
-    # Save all captured API calls to debug file
-    debug_path = Path(__file__).parent / "debug_output.txt"
-    with open(debug_path, "w") as f:
-        f.write(f"Total API calls captured: {len(api_calls)}\n\n")
-        for url in api_calls:
-            f.write(f"=== URL: {url} ===\n")
-            f.write(api_responses.get(url, 'no body')[:3000])
-            f.write("\n\n")
-
-    print(f"Captured {len(api_calls)} API calls, saved to debug_output.txt")
-    return api_responses
+    except requests.HTTPError as e:
+        print(f"  HTTP error for {metric_name}: {e}")
+        return f"HTTP {resp.status_code}"
+    except Exception as e:
+        print(f"  Error for {metric_name}: {e}")
+        return "Error"
 
 
-def parse_metrics_from_responses(api_responses):
-    """Try to extract the 12 metrics from captured API responses."""
-    results = {h: "N/A" for h in EXCEL_HEADERS[1:]}
-
-    # Look through all responses for our metrics
-    for url, body in api_responses.items():
-        try:
-            data = json.loads(body)
-            text = json.dumps(data).lower()
-
-            # Check if this response contains relevant data
-            if any(kw in text for kw in ['tvl', 'loanamount', 'loan_amount', 'chainTransactions']):
-                print(f"  Promising response from: {url}")
-                print(f"  Keys: {list(data.keys()) if isinstance(data, dict) else 'list'}")
-
-                # Try to extract known fields
-                flat = {}
-                def flatten(obj, prefix=''):
-                    if isinstance(obj, dict):
-                        for k, v in obj.items():
-                            flatten(v, f"{prefix}{k}.")
-                    elif isinstance(obj, list):
-                        for i, v in enumerate(obj):
-                            flatten(v, f"{prefix}{i}.")
-                    else:
-                        flat[prefix.rstrip('.')] = obj
-                flatten(data)
-
-                print(f"  Flattened keys sample: {list(flat.keys())[:20]}")
-        except Exception as e:
-            pass
-
+def scrape_all_metrics() -> dict:
+    results = {}
+    for header in EXCEL_HEADERS[1:]:
+        metric_name = METRICS[header]
+        value = fetch_metric(metric_name)
+        results[header] = value
+        print(f"  {header}: {value}")
     return results
 
 
@@ -161,31 +144,35 @@ def get_or_create_workbook():
     return wb
 
 
-def main():
-    today = date.today()
-    print(f"Scraping {URL} for {today}...")
-
-    api_responses = intercept_and_scrape()
-    metrics = parse_metrics_from_responses(api_responses)
-
-    wb = get_or_create_workbook()
+def append_row(wb, today: date, metrics: dict):
     ws = wb.active
-
-    # Remove existing entry for today if any
-    rows_to_delete = []
-    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        if row[0] == today.isoformat():
-            rows_to_delete.append(i)
-    for i in reversed(rows_to_delete):
-        ws.delete_rows(i)
-
     next_row = ws.max_row + 1
     row_data = [today.isoformat()] + [metrics[h] for h in EXCEL_HEADERS[1:]]
     for col, value in enumerate(row_data, start=1):
         cell = ws.cell(row=next_row, column=col, value=value)
         cell.alignment = Alignment(horizontal="center")
     wb.save(EXCEL_PATH)
-    print(f"✅ Row written for {today.isoformat()}")
+    print(f"\n✅ Saved {len(metrics)} metrics for {today.isoformat()}")
+
+
+def main():
+    today = date.today()
+    print(f"Fetching Provenance Pulse metrics for {today} (range={RANGE})...")
+
+    wb = get_or_create_workbook()
+    ws = wb.active
+    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+        if row[0] == today.isoformat():
+            print(f"⚠️  Entry for {today} already exists. Skipping.")
+            return
+
+    try:
+        metrics = scrape_all_metrics()
+    except Exception as e:
+        print(f"❌ Fatal error: {e}", file=sys.stderr)
+        metrics = {h: "FAILED" for h in EXCEL_HEADERS[1:]}
+
+    append_row(wb, today, metrics)
 
 
 if __name__ == "__main__":
