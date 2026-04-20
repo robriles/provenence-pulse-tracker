@@ -25,7 +25,7 @@ jobs:
           playwright install-deps chromium
 
       - name: Run scraper
-        run: python scrape_provenance_pulse.py
+        run: python scrape_provenance_pulse.py || true
 
       - name: Commit updated files
         env:
@@ -34,6 +34,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git add provenance_pulse_tracker.xlsx debug_output.txt
+          git add provenance_pulse_tracker.xlsx || true
+          git add debug_output.txt || true
           git diff --staged --quiet || git commit -m "Debug output: $(date +'%Y-%m-%d')"
           git push
